@@ -1,0 +1,3 @@
+# libgandi-domain
+
+C++ library

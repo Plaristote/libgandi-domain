@@ -1,0 +1,6 @@
+$out_root/
+{
+  include libgandi-domain/
+}
+
+export $out_root/libgandi-domain/$import.target

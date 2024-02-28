@@ -1,0 +1,46 @@
+intf_libs = # Interface dependencies.
+impl_libs += libcurlez%lib{curlez}
+impl_libs += libdatatree%lib{datatree}
+#import xxxx_libs += libhello%lib{hello}
+
+lib{gandi-domain}: {hxx ixx txx cxx}{** -version} hxx{version} $impl_libs $intf_libs
+
+hxx{version}: in{version} $src_root/manifest
+
+hxx{export}@./: cxx.importable = false
+
+# Build options.
+#
+cxx.poptions =+ "-I$out_root" "-I$src_root"
+
+{hbmia obja}{*}: cxx.poptions += -DLIBGANDI_DOMAIN_STATIC_BUILD
+{hbmis objs}{*}: cxx.poptions += -DLIBGANDI_DOMAIN_SHARED_BUILD
+
+# Export options.
+#
+lib{gandi-domain}:
+{
+  cxx.export.poptions = "-I$out_root" "-I$src_root"
+  cxx.export.libs = $intf_libs
+}
+
+liba{gandi-domain}: cxx.export.poptions += -DLIBGANDI_DOMAIN_STATIC
+libs{gandi-domain}: cxx.export.poptions += -DLIBGANDI_DOMAIN_SHARED
+
+# For pre-releases use the complete version to make sure they cannot be used
+# in place of another pre-release or the final version. See the version module
+# for details on the version.* variable values.
+#
+if $version.pre_release
+  lib{gandi-domain}: bin.lib.version = "-$version.project_id"
+else
+  lib{gandi-domain}: bin.lib.version = "-$version.major.$version.minor"
+
+# Install into the libgandi-domain/ subdirectory of, say, /usr/include/
+# recreating subdirectories.
+#
+{hxx ixx txx}{*}:
+{
+  install         = include/libgandi-domain/
+  install.subdirs = true
+}

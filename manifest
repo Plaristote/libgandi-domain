@@ -1,0 +1,14 @@
+: 1
+name: libgandi-domain
+version: 0.0.1
+language: c++
+project: Work
+summary: Gandi API C++ library
+license: BSD-3-Clause
+description-file: README.md
+url: https://github.com/Plaristote/libgandi-domain.git
+email: michael@unetresgrossebite.com
+depends: * build2 >= 0.16.0
+depends: * bpkg >= 0.16.0
+depends: libcurlez ^1.0.0
+depends: libdatatree ^2.0.0 
