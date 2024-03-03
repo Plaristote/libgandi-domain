@@ -7,13 +7,14 @@ namespace Gandi
   template<typename TYPE = std::string>
   struct PagedList
   {
+    typedef typename std::vector<TYPE> ListType;
     typedef TYPE value_type;
-    std::vector<TYPE> list;
+    ListType list;
     unsigned int count;
     operator std::vector<TYPE>() const { return list; }
-    std::vector<TYPE>::iterator begin() { return std::begin(list); }
-    std::vector<TYPE>::iterator end() { return std::end(list); }
-    std::vector<TYPE>::const_iterator cbegin() const { return std::cbegin(list); }
-    std::vector<TYPE>::const_iterator cend() const { return std::cend(list); }
+    typename ListType::iterator begin() { return std::begin(list); }
+    typename ListType::iterator end() { return std::end(list); }
+    typename ListType::const_iterator cbegin() const { return std::cbegin(list); }
+    typename ListType::const_iterator cend() const { return std::cend(list); }
   };
 }
