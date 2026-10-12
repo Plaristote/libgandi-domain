@@ -1,6 +1,7 @@
 #pragma once
 #include "api.hxx"
 #include "paged-list.hxx"
+#include <optional>
 
 namespace Gandi
 {
@@ -42,11 +43,48 @@ namespace Gandi
       bool livednssec_available;
     };
 
+    struct Availability
+    {
+      std::string name;
+      std::string status;
+      double price_before_taxes = 0.0;
+      double price_after_taxes = 0.0;
+      std::string currency;
+      operator bool() const { return status == "available"; }
+    };
+
+    struct Registration
+    {
+      std::string fqdn;
+      int duration_years = 1;
+      std::string owner_id;
+      std::string to_json() const;
+    };
+
+    struct RegistrationResult
+    {
+      int status = 0;
+      std::string message;
+      operator bool() const { return status == 201 || status == 200; }
+    };
+
+    struct Transfer
+    {
+      std::string fqdn;
+      std::string auth_code;
+      std::string owner_id;
+      std::string to_json() const;
+    };
+
     Domains(const std::string_view token);
 
     PagedList<Domain> list(unsigned int page = 0, unsigned int per_page = 0) const;
+    std::optional<Domain> get(const std::string_view domain_name) const;
     PagedList<GlueRecord> glue_records(const std::string_view domain_name, unsigned int page = 0, unsigned int per_page = 0) const;
-
     LiveDnsStatus livedns(const std::string_view) const;
+    Availability check_availability(const std::string_view) const;
+    RegistrationResult buy(const Registration&) const;
+    RegistrationResult renew(const std::string_view, int duration_years = 1) const;
+    RegistrationResult transfer(const Transfer&) const;
   };
 }

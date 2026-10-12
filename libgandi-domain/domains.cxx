@@ -103,6 +103,24 @@ PagedList<Domains::Domain> Domains::list(unsigned int page, unsigned int per_pag
   return result;
 }
 
+optional<Domains::Domain> Domains::get(const string_view domain_name) const
+{
+  Domain domain;
+  CurlReader query;
+  ostringstream url;
+
+  url << gandi_api_url << "/domain/domains/" << domain_name;
+  decorate_query(query);
+  query.method("GET").url(url.str());
+
+  if (query.perform() == 200)
+  {
+    load_response(query, domain);
+    return domain;
+  }
+  return {};
+}
+
 PagedList<Domains::GlueRecord> Domains::glue_records(const string_view domain_name, unsigned int page, unsigned int per_page) const
 {
   PagedList<GlueRecord> result{{}, 0};
@@ -131,5 +149,121 @@ Domains::LiveDnsStatus Domains::livedns(const string_view domain_name) const
        .url(url.str());
   if (query.perform() == 200)
     load_response<LiveDnsStatus>(query, result);
+  return result;
+}
+
+Domains::Availability Domains::check_availability(const string_view domain_name) const
+{
+  Availability result;
+  CurlReader query;
+  ostringstream url;
+  DataTree response;
+
+  url << gandi_api_url << "/domain/check?name=" << domain_name << "&processes=create";
+  decorate_query(query);
+  query.method("GET")
+       .url(url.str());
+  if (query.perform() == 200)
+  {
+    response.from_json(string(query.response_body()));
+    for (Data product : response["products"])
+    {
+      if (product["name"].defaults_to<string>("") == domain_name)
+      {
+        result.status = product["status"].defaults_to<string>("undefined");
+        for (Data price : product["prices"])
+        {
+          result.price_before_taxes = price["price_before_taxes"].defaults_to<double>(0.0);
+          result.price_after_taxes = price["price_after_taxes"].defaults_to<double>(0.0);
+          result.currency = price["currency"].defaults_to<string>("EUR");
+          break ;
+        }
+        break ;
+      }
+    }
+  }
+  else
+    result.status = string(query.response_body());
+  return result;
+}
+
+string Domains::Registration::to_json() const
+{
+  DataTree object;
+
+  object["fqdn"] = fqdn;
+  object["duration"] = duration_years;
+  if (!owner_id.empty())
+    object["owner"] = owner_id;
+  return object.to_json();
+}
+
+Domains::RegistrationResult Domains::buy(const Registration& registration) const
+{
+  RegistrationResult result;
+  CurlReader query;
+  ostringstream url;
+  string body = registration.to_json();
+
+  url << gandi_api_url << "/domain/domains";
+  decorate_query(query);
+  query.method("POST")
+       .url(url.str())
+       .header("Content-Type", string_view("application/json"))
+       .body(body);
+
+  result.status = query.perform();
+  if (!result)
+    result.message = query.response_body();
+  return result;
+}
+
+Domains::RegistrationResult Domains::renew(const std::string_view domain_name, int duration_years) const
+{
+  RegistrationResult result;
+  CurlReader query;
+  ostringstream url;
+  DataTree body;
+
+  body["duration"] = duration_years;
+  url << gandi_api_url << "/domain/domains/" << domain_name << "/renew";
+  decorate_query(query);
+  query.method("POST")
+       .url(url.str())
+       .header("Content-Type", string_view("application/json"))
+       .body(body.to_json());
+  result.status = query.perform();
+  if (!result)
+    result.message = query.response_body();
+  return result;
+}
+
+string Domains::Transfer::to_json() const
+{
+  DataTree object;
+  object["fqdn"] = fqdn;
+  object["authcode"] = auth_code;
+  if (!owner_id.empty())
+    object["owner"] = owner_id;
+  return object.to_json();
+}
+
+Domains::RegistrationResult Domains::transfer(const Transfer& transfer) const
+{
+  RegistrationResult result;
+  CurlReader query;
+  ostringstream url;
+  string body = transfer.to_json();
+
+  url << gandi_api_url << "/domain/domains";
+  decorate_query(query);
+  query.method("POST")
+       .url(url.str())
+       .header("Content-Type", string_view("application/json"))
+       .body(body);
+
+  result.status = query.perform();
+  if (!result)
+    result.message = string(query.response_body());
   return result;
 }
