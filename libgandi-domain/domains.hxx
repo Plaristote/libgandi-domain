@@ -11,6 +11,7 @@ namespace Gandi
     {
       bool autorenew;
       time_point registry_created_at;
+      time_point registry_ends_at;
       time_point updated_at;
       std::string domain_owner;
       std::string orga_owner;

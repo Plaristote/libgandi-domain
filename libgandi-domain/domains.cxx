@@ -5,9 +5,30 @@
 using namespace std;
 using namespace Gandi;
 
+static time_point parse_gandi_time(const string& str)
+{
+  if (!str.empty())
+  {
+    tm tm = {};
+    istringstream ss(str);
+
+    ss >> get_time(&tm, "%Y-%m-%dT%H:%M:%S"); // ISO 8601 format, like "2026-01-20T00:00:00Z"
+    if (!ss.fail()) [[likely]]
+    {
+      time_t time_t_val = mktime(&tm);
+
+      return chrono::system_clock::from_time_t(time_t_val);
+    }
+  }
+  return {};
+}
+
 static void load_from_data(Domains::Domain& domain, Data data)
 {
   domain.autorenew = data["autorenew"].as<bool>();
+  domain.registry_created_at = parse_gandi_time(data["registry_created_at"].defaults_to<string>(""));
+  domain.registry_ends_at = parse_gandi_time(data["registry_ends_at"].defaults_to<string>(""));
+  domain.updated_at = parse_gandi_time(data["updated_at"].defaults_to<string>(""));
   domain.domain_owner = data["domain_owner"].as<string>();
   domain.orga_owner = data["orga_owner"].as<string>();
   domain.owner = data["owner"].as<string>();
