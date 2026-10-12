@@ -1,6 +1,5 @@
-intf_libs = # Interface dependencies.
-impl_libs += libcurlez%lib{curlez}
-impl_libs += libdatatree%lib{datatree}
+import impl_libs += libcurlez%lib{curlez}
+import impl_libs += libdatatree%lib{datatree}
 #import xxxx_libs += libhello%lib{hello}
 
 lib{gandi-domain}: {hxx ixx txx cxx}{** -version} hxx{version} $impl_libs $intf_libs
