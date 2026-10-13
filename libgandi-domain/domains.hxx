@@ -86,9 +86,19 @@ namespace Gandi
       bool is_unknown() const { return status == 404 || status == 403; }
     };
 
+    struct ListResult
+    {
+      int status = 0;
+      std::string error;
+      std::vector<Domain> domains;
+      bool ok() const { return status == 200; }
+      operator bool() const { return ok(); }
+    };
+
     Domains(const std::string_view token);
 
     PagedList<Domain> list(unsigned int page = 0, unsigned int per_page = 0) const;
+    ListResult list_all(unsigned int per_page = 100) const;
     std::optional<Domain> get(const std::string_view domain_name) const;
     Lookup lookup(const std::string_view domain_name) const;
     PagedList<GlueRecord> glue_records(const std::string_view domain_name, unsigned int page = 0, unsigned int per_page = 0) const;

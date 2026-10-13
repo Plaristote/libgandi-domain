@@ -102,6 +102,53 @@ PagedList<Domains::Domain> Domains::list(unsigned int page, unsigned int per_pag
   return result;
 }
 
+Domains::ListResult Domains::list_all(unsigned int per_page) const
+{
+  ListResult result;
+  const unsigned int max_pages = 100; // Can't loop forever
+
+  if (per_page == 0)
+    per_page = 100;
+  for (unsigned int page = 1 ; page <= max_pages ; ++page)
+  {
+    CurlReader query;
+    ostringstream url;
+    PagedList<Domain> paged{{}, 0};
+    bool is_last_page = false;
+
+    url << gandi_api_url << "/domain/domains";
+    decorate_url(url, page, per_page);
+    decorate_query(query);
+    query.method("GET").url(url.str());
+    result.status = query.perform();
+    if (result.status == 200)
+    {
+      try
+      {
+        load_response<Domain>(*this, query, paged);
+        is_last_page = paged.list.size() < per_page || (paged.count > 0 && result.domains.size() >= paged.count);
+        result.domains.insert(result.domains.end(), paged.list.begin(), paged.list.end());
+      }
+      catch (const std::exception& error)
+      {
+        result.status = 0;
+        result.error = string("unexpected response: ") + error.what();
+        is_last_page = true;
+      }
+      if (is_last_page)
+        break ;
+    }
+    else
+    {
+      result.error = query.error();
+      if (result.error.empty())
+        result.error = string(query.response_body());
+      break ;
+    }
+  }
+  return result;
+}
+
 optional<Domains::Domain> Domains::get(const string_view domain_name) const
 {
   return lookup(domain_name).domain;

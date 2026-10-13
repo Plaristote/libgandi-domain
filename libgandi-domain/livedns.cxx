@@ -137,24 +137,44 @@ PagedList<LiveDns::DomainRecord> LiveDns::domain_records(const string_view domai
 
 optional<LiveDns::DomainRecord> LiveDns::domain_record(const string_view domain_name, const string_view name, const string_view type) const
 {
+  RecordLookup lookup = lookup_domain_record(domain_name, name, type);
+
+  if (lookup.failed())
+    cerr << "Failed to read domain record: " << lookup.status << endl << lookup.error << endl;
+  return lookup.record;
+}
+
+LiveDns::RecordLookup LiveDns::lookup_domain_record(const string_view domain_name, const string_view name, const string_view type) const
+{
+  RecordLookup result;
   CurlReader query;
   ostringstream url;
-  int status;
 
   url << gandi_domain_api_url << '/' << domain_name << "/records/" << name << '/' << type;
   decorate_query(query);
   query.method("GET").url(url.str());
-  status = query.perform();
-  if (status == 200)
+  result.status = query.perform();
+  try
   {
-    DomainRecord result{string(domain_name), string(name), string(type)};
+    if (result.status == 200)
+    {
+      DomainRecord result{string(domain_name), string(name), string(type)};
 
-    load_response<DomainRecord>(query, result);
-    return result;
+      load_response<DomainRecord>(query, result);
+    }
+    else if (result.status != 404)
+    {
+      result.error = query.error();
+      if (result.error.empty())
+        result.error = string(query.response_body());
+    }
   }
-  if (status != 404)
-    cerr << "Failed to read domain record: " << status << endl << query.error() << query.response_body() << endl;
-  return {};
+  catch (const std::exception& error)
+  {
+    result.status = 0;
+    result.error = string("unexpected response: ") + error.what();
+  }
+  return result;
 }
 
 bool LiveDns::add_domain_record(const DomainRecord& record) const
