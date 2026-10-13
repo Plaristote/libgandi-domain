@@ -19,6 +19,8 @@ namespace Gandi
     Api(const std::string_view token);
     std::string authorization_header() const;
 
+    static bool is_success(int status) { return status >= 200 && status < 300; }
+
     unsigned int get_total_count_from(CurlReader&) const;
     void decorate_query(Curl&) const;
     void decorate_url(std::ostringstream&, unsigned int page, unsigned int per_page) const;

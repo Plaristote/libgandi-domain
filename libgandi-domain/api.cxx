@@ -18,6 +18,8 @@ string Gandi::Api::authorization_header() const
 void Gandi::Api::decorate_query(Curl& query) const
 {
   query.header("Authorization", authorization_header());
+  query.option(CURLOPT_CONNECTTIMEOUT, 5L);
+  query.option(CURLOPT_TIMEOUT, 15L);
   //query.option(CURLOPT_VERBOSE, 1L);
 }
 

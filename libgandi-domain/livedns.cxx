@@ -1,3 +1,4 @@
+#include "helpers.hxx"
 #include <libgandi-domain/gandi-domain.hxx>
 #include <libcurlez/curlez.hxx>
 #include <crails/datatree.hpp>
@@ -13,8 +14,16 @@ static void write_to(const LiveDns::DomainRecord& record, Data item)
 {
   item["rrset_name"] = record.name;
   item["rrset_type"] = record.type;
-  item["ttl"]        = record.ttl;
+  item["rrset_ttl"]  = record.ttl;
   item["rrset_values"].from_vector(record.values);
+}
+
+static void load_from_data(LiveDns::DomainRecord& record, Data data)
+{
+  record.name   = data["rrset_name"].defaults_to<string>(record.name);
+  record.type   = data["rrset_type"].defaults_to<string>(record.type);
+  record.values = data["rrset_values"].to_vector<string>();
+  record.ttl    = data["rrset_ttl"].defaults_to<unsigned int>(0);
 }
 
 LiveDns::LiveDns(const string_view token) : Api(token)
@@ -50,9 +59,9 @@ vector<string> LiveDns::accepted_record_types() const
   ostringstream url;
 
   url << gandi_api_url << "/livedns/dns/rrtypes";
+  decorate_query(query);
   query.method("GET")
-       .url(url.str())
-       .header("Authorization", authorization_header());
+       .url(url.str());
   if (query.perform() == 200)
   {
     DataTree response;
@@ -72,15 +81,14 @@ PagedList<string> LiveDns::domain_names(unsigned int page, unsigned int per_page
 
   url << gandi_domain_api_url;
   decorate_url(url, page, per_page);
+  decorate_query(query);
   query.method("GET")
-       .url(url.str())
-       .header("Authorization", authorization_header());
+       .url(url.str());
   if (query.perform() == 200)
   {
     DataTree response;
     vector<string> names;
 
-    cout << "son of a whore: " << query.response_body() << ',' << get_total_count_from(query) << endl;
     response.from_json(string(query.response_body()));
     for (Data entry : response.as_data())
     {
@@ -88,7 +96,7 @@ PagedList<string> LiveDns::domain_names(unsigned int page, unsigned int per_page
     }
     return {names, get_total_count_from(query)};
   }
-  cerr << "son of a bitch: " << query.response_body() << endl;
+  cerr << "Failed to list LiveDNS domains: " << query.response_body() << endl;
   return {{}, 0};
 }
 
@@ -98,16 +106,14 @@ bool LiveDns::add_domain(const Domain& domain) const
   ostringstream url;
 
   url << gandi_domain_api_url;
+  decorate_query(query);
   query.method("POST")
        .url(url.str())
-       .header("Authorization", authorization_header())
+       .header("Content-Type", string_view("application/json"))
        .body(domain.to_json());
-  if (query.perform() == 200)
-  {
+  if (is_success(query.perform()))
     return true;
-  }
-  else
-    ; // TODO
+  cerr << "Failed to add LiveDNS domain:" << endl << query.response_body() << endl;
   return false;
 }
 
@@ -116,32 +122,39 @@ PagedList<LiveDns::DomainRecord> LiveDns::domain_records(const string_view domai
   CurlReader query;
   ostringstream url;
   int status;
+  PagedList<LiveDns::DomainRecord> result{{}, 0};
 
   url << gandi_domain_api_url << '/' << domain_name << "/records";
   decorate_url(url, page, per_page);
+  decorate_query(query);
   query.method("GET")
-       .url(url.str())
-       .header("Authorization", authorization_header());
+       .url(url.str());
+  status = query.perform();
+  if (status == 200)
+    load_response<DomainRecord>(*this, query, result);
+  return result;
+}
+
+optional<LiveDns::DomainRecord> LiveDns::domain_record(const string_view domain_name, const string_view name, const string_view type) const
+{
+  CurlReader query;
+  ostringstream url;
+  int status;
+
+  url << gandi_domain_api_url << '/' << domain_name << "/records/" << name << '/' << type;
+  decorate_query(query);
+  query.method("GET").url(url.str());
   status = query.perform();
   if (status == 200)
   {
-    DataTree response;
-    vector<DomainRecord> records;
+    DomainRecord result{string(domain_name), string(name), string(type)};
 
-    response.from_json(string(query.response_body()));
-    for (Data entry : response.as_data())
-    {
-      records.push_back({
-        string(domain_name),
-        entry["rrset_name"].as<string>(),
-        entry["rrset_type"].as<string>(),
-        entry["rrset_values"].to_vector<string>(),
-        entry["rrset_ttl"].as<unsigned int>()
-      });
-    }
-    return {records, get_total_count_from(query)};
+    load_response<DomainRecord>(query, result);
+    return result;
   }
-  return {{}, 0};
+  if (status != 404)
+    cerr << "Failed to read domain record: " << status << endl << query.error() << query.response_body() << endl;
+  return {};
 }
 
 bool LiveDns::add_domain_record(const DomainRecord& record) const
@@ -151,12 +164,12 @@ bool LiveDns::add_domain_record(const DomainRecord& record) const
   string body = record.to_json();
 
   url << gandi_domain_api_url << '/' << record.domain_name << "/records";
+  decorate_query(query);
   query.method("POST")
        .url(url.str())
-       .header("Authorization", authorization_header())
        .header("Content-Type", string_view("application/json"))
        .body(body);
-  if (query.perform() == 200)
+  if (is_success(query.perform()))
     return true;
   else
     cerr << "Failed to add domain record:" << endl << query.response_body() << endl;
@@ -180,10 +193,10 @@ bool LiveDns::update_domain_record(const DomainRecord& record) const
        .header("Content-Type", string("application/json"))
        .body(body);
   status = query.perform();
-  if (status == 200)
+  if (is_success(status))
     return true;
-  cout << "Failed to update domain record: " << status << endl << query.error() << query.response_body() << endl;
-  return false; 
+  cerr << "Failed to update domain record: " << status << endl << query.error() << query.response_body() << endl;
+  return false;
 }
 
 bool LiveDns::delete_domain_record(const DomainRecord& record) const
@@ -195,10 +208,10 @@ bool LiveDns::delete_domain_record(const DomainRecord& record) const
       << "/records/"
       << record.name << '/'
       << record.type;
+  decorate_query(query);
   query.method("DELETE")
-       .url(url.str())
-       .header("Authorization", authorization_header());
-  return query.perform() == 200;
+       .url(url.str());
+  return is_success(query.perform());
 }
 
 vector<string> LiveDns::nameservers(const string_view domain_name) const
@@ -206,10 +219,10 @@ vector<string> LiveDns::nameservers(const string_view domain_name) const
   CurlReader query;
   ostringstream url;
 
-  url << gandi_domain_api_url << '/' << domain_name << "nameservers";
+  url << gandi_domain_api_url << '/' << domain_name << "/nameservers";
+  decorate_query(query);
   query.method("GET")
-       .url(url.str())
-       .header("Authorization", authorization_header());
+       .url(url.str());
   if (query.perform() == 200)
   {
     DataTree response;

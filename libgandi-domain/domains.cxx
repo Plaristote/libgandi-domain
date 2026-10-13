@@ -1,6 +1,9 @@
 #include "domains.hxx"
+#include "helpers.hxx"
 #include <crails/datatree.hpp>
 #include <libcurlez/curlez.hxx>
+#include <ctime>
+#include <iomanip>
 
 using namespace std;
 using namespace Gandi;
@@ -14,29 +17,50 @@ static time_point parse_gandi_time(const string& str)
 
     ss >> get_time(&tm, "%Y-%m-%dT%H:%M:%S"); // ISO 8601 format, like "2026-01-20T00:00:00Z"
     if (!ss.fail()) [[likely]]
-    {
-      time_t time_t_val = mktime(&tm);
-
-      return chrono::system_clock::from_time_t(time_t_val);
-    }
+      return chrono::system_clock::from_time_t(timegm(&tm));
   }
   return {};
 }
 
+static time_point load_date(Data data, const string& key)
+{
+  Data dates = data["dates"];
+
+  if (dates.exists() && dates[key].exists())
+    return parse_gandi_time(dates[key].defaults_to<string>(""));
+  return parse_gandi_time(data[key].defaults_to<string>(""));
+}
+
+static bool load_autorenew(Data data)
+{
+  Data autorenew = data["autorenew"];
+  bool result = false;
+
+  if (autorenew.exists())
+  {
+    if (autorenew["enabled"].exists())
+      autorenew = autorenew["enabled"];
+    try { result = autorenew.defaults_to<bool>(false); }
+    catch (const std::exception&) {}
+  }
+  return result;
+}
+
 static void load_from_data(Domains::Domain& domain, Data data)
 {
-  domain.autorenew = data["autorenew"].as<bool>();
-  domain.registry_created_at = parse_gandi_time(data["registry_created_at"].defaults_to<string>(""));
-  domain.registry_ends_at = parse_gandi_time(data["registry_ends_at"].defaults_to<string>(""));
-  domain.updated_at = parse_gandi_time(data["updated_at"].defaults_to<string>(""));
-  domain.domain_owner = data["domain_owner"].as<string>();
-  domain.orga_owner = data["orga_owner"].as<string>();
-  domain.owner = data["owner"].as<string>();
-  domain.fqdn = data["fqdn"].as<string>();
-  domain.fqdn_unicode = data["fqdn_unicode"].as<string>();
-  domain.href = data["href"].as<string>();
-  domain.id = data["id"].as<string>();
-  domain.tld = data["tld"].as<string>();
+  domain.autorenew = load_autorenew(data);
+  domain.registry_created_at = load_date(data, "registry_created_at");
+  domain.registry_ends_at = load_date(data, "registry_ends_at");
+  domain.renew_begins_at = load_date(data, "renew_begins_at");
+  domain.updated_at = load_date(data, "updated_at");
+  domain.domain_owner = data["domain_owner"].defaults_to<string>("");
+  domain.orga_owner = data["orga_owner"].defaults_to<string>("");
+  domain.owner = data["owner"].defaults_to<string>("");
+  domain.fqdn = data["fqdn"].defaults_to<string>("");
+  domain.fqdn_unicode = data["fqdn_unicode"].defaults_to<string>("");
+  domain.href = data["href"].defaults_to<string>("");
+  domain.id = data["id"].defaults_to<string>("");
+  domain.tld = data["tld"].defaults_to<string>("");
   domain.status = data["status"].to_vector<string>();
   domain.tags = data["tags"].to_vector<string>();
 }
@@ -56,31 +80,6 @@ static void load_from_data(Domains::LiveDnsStatus& status, Data data)
   status.nameservers = data["nameservers"].to_vector<string>();
   status.dnssec_available = data["dnssec_available"].defaults_to<bool>(false);
   status.livednssec_available = data["livednssec_available"].defaults_to<bool>(false);
-}
-
-template<typename OBJECT>
-static void load_response(CurlReader& query, OBJECT& result)
-{
-  DataTree response;
-
-  response.from_json(string(query.response_body()));
-  load_from_data(result, response.as_data());
-}
-
-template<typename OBJECT>
-static void load_response(const Domains& api, CurlReader& query, PagedList<OBJECT>& result)
-{
-  DataTree response;
-
-  response.from_json(string(query.response_body()));
-  result.count = api.get_total_count_from(query);
-  for (Data entry : response.as_data())
-  {
-    OBJECT domain;
-
-    load_from_data(domain, entry);
-    result.list.push_back(domain);
-  }
 }
 
 Domains::Domains(const string_view token) : Api(token)
@@ -105,7 +104,12 @@ PagedList<Domains::Domain> Domains::list(unsigned int page, unsigned int per_pag
 
 optional<Domains::Domain> Domains::get(const string_view domain_name) const
 {
-  Domain domain;
+  return lookup(domain_name).domain;
+}
+
+Domains::Lookup Domains::lookup(const string_view domain_name) const
+{
+  Lookup result;
   CurlReader query;
   ostringstream url;
 
@@ -113,12 +117,28 @@ optional<Domains::Domain> Domains::get(const string_view domain_name) const
   decorate_query(query);
   query.method("GET").url(url.str());
 
-  if (query.perform() == 200)
+  result.status = query.perform();
+  if (result.status == 200)
   {
-    load_response(query, domain);
-    return domain;
+    try
+    {
+      Domain domain;
+
+      load_response(query, domain);
+      result.domain = domain;
+    }
+    catch (const std::exception& error)
+    {
+      result.error = string("unexpected response: ") + error.what();
+    }
   }
-  return {};
+  else
+  {
+    result.error = query.error();
+    if (result.error.empty())
+      result.error = string(query.response_body());
+  }
+  return result;
 }
 
 PagedList<Domains::GlueRecord> Domains::glue_records(const string_view domain_name, unsigned int page, unsigned int per_page) const

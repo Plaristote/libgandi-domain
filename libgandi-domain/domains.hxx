@@ -10,9 +10,10 @@ namespace Gandi
   public:
     struct Domain
     {
-      bool autorenew;
+      bool autorenew = false;
       time_point registry_created_at;
       time_point registry_ends_at;
+      time_point renew_begins_at;
       time_point updated_at;
       std::string domain_owner;
       std::string orga_owner;
@@ -76,10 +77,20 @@ namespace Gandi
       std::string to_json() const;
     };
 
+    struct Lookup
+    {
+      int status = 0;
+      std::string error;
+      std::optional<Domain> domain;
+      operator bool() const { return status == 200 && domain.has_value(); }
+      bool is_unknown() const { return status == 404 || status == 403; }
+    };
+
     Domains(const std::string_view token);
 
     PagedList<Domain> list(unsigned int page = 0, unsigned int per_page = 0) const;
     std::optional<Domain> get(const std::string_view domain_name) const;
+    Lookup lookup(const std::string_view domain_name) const;
     PagedList<GlueRecord> glue_records(const std::string_view domain_name, unsigned int page = 0, unsigned int per_page = 0) const;
     LiveDnsStatus livedns(const std::string_view) const;
     Availability check_availability(const std::string_view) const;

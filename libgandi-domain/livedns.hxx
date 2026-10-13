@@ -1,6 +1,7 @@
 #pragma once
 #include "api.hxx"
 #include "paged-list.hxx"
+#include <optional>
 #include <vector>
 
 namespace Gandi
@@ -33,6 +34,7 @@ namespace Gandi
     bool add_domain(const Domain&) const;
     PagedList<DomainRecord> domain_records(const Domain& domain, unsigned int page = 0, unsigned int per_page = 0) const { return domain_records(domain.fqdn, page, per_page); }
     PagedList<DomainRecord> domain_records(const std::string_view domain_name, unsigned int page = 0, unsigned int per_page = 0) const;
+    std::optional<DomainRecord> domain_record(const std::string_view domain_name, const std::string_view name, const std::string_view type) const;
     bool add_domain_record(const DomainRecord&) const;
     bool update_domain_record(const DomainRecord&) const;
     bool delete_domain_record(const DomainRecord&) const;
